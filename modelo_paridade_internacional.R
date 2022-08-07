@@ -26,6 +26,7 @@ dados_etanol_blr = read.csv("dados/etanol_semanal_anp_blr.csv")
 dados_acucar_usd = read.csv("dados/acucar_diario_ny_usd.csv")
 dados_dolar_blr = read.csv("dados/dolar_diario_blr.csv")
 dados_brent_usd = read.csv("dados/brent_diario_usd.csv")
+dados_rbob_usd = read.csv("dados/rbob_diario_usd.csv")
 
 dados_etanol_blr$data <- as.Date(dados_etanol_blr$data_fim,format="%d/%m/%Y")
 dados_etanol_blr$data_inicio <- NULL
@@ -43,6 +44,10 @@ dados_brent_usd$data_ajustada <- as.Date(dados_brent_usd$data,format="%d/%m/%Y")
 dados_brent_usd$data <- dados_brent_usd$data_ajustada + 1
 dados_brent_usd$data_ajustada <- NULL
 
+dados_rbob_usd$data_ajustada <- as.Date(dados_rbob_usd$data,format="%d/%m/%Y")
+dados_rbob_usd$data <- dados_rbob_usd$data_ajustada + 1
+dados_rbob_usd$data_ajustada <- NULL
+
 dados = dados_etanol_blr
 
 dados = merge(x = dados, 
@@ -55,6 +60,10 @@ dados = merge(x = dados,
 
 dados = merge(x = dados, 
               y = dados_brent_usd, 
+              by = "data", all.x = TRUE)
+
+dados = merge(x = dados,
+              y = dados_rbob_usd,
               by = "data", all.x = TRUE)
 
 dados = dados[dados$data >= '2017-01-01', ]
@@ -85,7 +94,7 @@ dados %>%
 #A função chart.Correlation() do pacote PerformanceAnalytics apresenta as
 #distribuições das variáveis, scatters, valores das correlações e suas
 #respectivas significâncias
-chart.Correlation((dados[2:5]), histogram = TRUE)
+chart.Correlation((dados[2:6]), histogram = TRUE)
 
 #A função corr_plot do pacote metan também apresenta as distribuições
 #das variáveis, scatters, valores das correlações e suas respectivas
@@ -114,6 +123,7 @@ modelo <- lm(formula = etanol_blr ~ . -data, data = dados)
 
 #Parâmetros do modelo
 summary(modelo)
+export_summs(modelo, scale = F, digits = 5)
 
 #Aplicando o procedimento Stepwise, temos o seguinte código:
 step_modelo <- step(modelo, k = 3.841459)
@@ -183,19 +193,19 @@ lambda_BC <- powerTransform(dados$etanol_blr) #função powerTransform do pacote
 lambda_BC
 
 #Inserindo o lambda de Box-Cox na base de dados para a estimação de um novo modelo
-dados$bcEtanol <- (((dados$etanol_blr ^ lambda_BC$lambda) - 1) / 
+dados$etanol_bc <- (((dados$etanol_blr ^ lambda_BC$lambda) - 1) / 
                      lambda_BC$lambda)
 
 #Visualizando a nova variável na base de dados
 dados %>%
-  select(data, etanol_blr, bcEtanol, everything()) %>%
+  select(data, etanol_blr, etanol_bc, everything()) %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
                 font_size = 16)
 
 #Estimando um novo modelo múltiplo com variável dependente transformada por Box-Cox
-modelo_bc <- lm(formula = bcEtanol ~ . -data -etanol_blr, 
+modelo_bc <- lm(formula = etanol_bc ~ . -data -etanol_blr, 
                 data = dados)
 
 #Parâmetros do modelo
@@ -205,6 +215,7 @@ summary(modelo_bc)
 step_modelo_bc <- step(modelo_bc, k = 3.841459)
 
 summary(step_modelo_bc)
+export_summs(step_modelo, scale = F, digits = 5)
 
 #Verificando a normalidade dos resíduos do modelo step_modelo_bc
 sf.test(step_modelo_bc$residuals) #função sf.test do pacote nortest
@@ -227,3 +238,33 @@ dados %>%
   labs(x = "Resíduos",
        y = "Frequência") +
   theme_bw()
+
+
+#Salvando os fitted values dos dois modelos (modelo_linear e modelo_bc)
+dados$yhat_linear <- step_modelo$fitted.values
+dados$yhat_modelo_bc <- (((step_modelo_bc$fitted.values*(lambda_BC$lambda))+
+                            1))^(1/(lambda_BC$lambda))
+
+#Ajustes dos modelos: valores previstos (fitted values) X valores reais
+dados %>%
+  ggplot() +
+  geom_smooth(aes(x = etanol_blr, y = yhat_linear, color = "OLS Linear"),
+              method = "lm", se = F, formula = y ~ splines::bs(x, df = 5), size = 1.5) +
+  geom_point(aes(x = etanol_blr, y = yhat_linear),
+             color = "#FDE725FF", alpha = 0.6, size = 2) +
+  geom_smooth(aes(x = etanol_blr, y = yhat_modelo_bc, color = "Box-Cox"),
+              method = "lm", se = F, formula = y ~ splines::bs(x, df = 5), size = 1.5) +
+  geom_point(aes(x = etanol_blr, y = yhat_modelo_bc),
+             color = "#440154FF", alpha = 0.6, size = 2) +
+  geom_smooth(aes(x = etanol_blr, y = etanol_blr), method = "lm", 
+              color = "gray30", size = 1.05,
+              linetype = "longdash") +
+  scale_color_manual("Modelos:", 
+                     values = c("#440154FF", "#FDE725FF")) +
+  labs(x = "etanol_blr", y = "Fitted Values") +
+  theme(panel.background = element_rect("white"),
+        panel.grid = element_line("grey95"),
+        panel.border = element_rect(NA),
+        legend.position = "bottom")
+
+

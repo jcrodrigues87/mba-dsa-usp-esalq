@@ -48,7 +48,7 @@ dados = merge(x = dados,
               y = dados_acucar_blr, 
               by = "data", all.x = TRUE)
 
-dados = dados[dados$data >= '2018-01-01', ]
+dados = dados[dados$data >= '2017-01-01', ]
 
 dados = na.omit(dados)
 
@@ -182,19 +182,19 @@ lambda_BC <- powerTransform(dados$etanol_blr) #função powerTransform do pacote
 lambda_BC
 
 #Inserindo o lambda de Box-Cox na base de dados para a estimação de um novo modelo
-dados$bcEtanol <- (((dados$etanol_blr ^ lambda_BC$lambda) - 1) / 
+dados$etanol_bc <- (((dados$etanol_blr ^ lambda_BC$lambda) - 1) / 
                      lambda_BC$lambda)
 
 #Visualizando a nova variável na base de dados
 dados %>%
-  select(data, etanol_blr, bcEtanol, everything()) %>%
+  select(data, etanol_blr, etanol_bc, everything()) %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
                 font_size = 16)
 
 #Estimando um novo modelo múltiplo com variável dependente transformada por Box-Cox
-modelo_bc <- lm(formula = bcEtanol ~ . -data -etanol_blr, 
+modelo_bc <- lm(formula = etanol_bc ~ . -data -etanol_blr, 
                 data = dados)
 
 #Parâmetros do modelo
@@ -203,12 +203,11 @@ summary(modelo_bc)
 #Aplicando o procedimento Stepwise
 step_modelo_bc <- step(modelo_bc, k = 3.841459)
 
-summary(step_eta_gas_acu)
 summary(step_modelo_bc)
+export_summs(step_modelo_bc, scale = F, digits = 5)
 
 #Verificando a normalidade dos resíduos do modelo step_modelo_bc
 sf.test(step_modelo_bc$residuals) #função sf.test do pacote nortest
-
 
 #Plotando os novos resíduos do step_modelo_bc
 dados %>%
@@ -227,3 +226,6 @@ dados %>%
   labs(x = "Resíduos",
        y = "Frequência") +
   theme_bw()
+
+ols_test_breusch_pagan(step_modelo_bc)
+ols_test_breusch_pagan(step_modelo)
